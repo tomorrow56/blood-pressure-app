@@ -1,278 +1,388 @@
-import { Image } from "expo-image";
-import { useRouter, Link } from "expo-router";
-import * as WebBrowser from "expo-web-browser";
-import { useEffect, useState } from "react";
-import { ActivityIndicator, Platform, Pressable, StyleSheet } from "react-native";
+import { useFocusEffect, useRouter } from "expo-router";
+import { useCallback, useState } from "react";
+import {
+  ActivityIndicator,
+  Alert,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  TextInput,
+  View,
+} from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { HelloWave } from "@/components/hello-wave";
-import ParallaxScrollView from "@/components/parallax-scroll-view";
+import { IconSymbol } from "@/components/ui/icon-symbol";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
-import { getLoginUrl } from "@/constants/oauth";
-import { useAuth } from "@/hooks/use-auth";
+import { Colors } from "@/constants/theme";
+import { useColorScheme } from "@/hooks/use-color-scheme";
+import { getLatestReading, saveReading } from "@/services/storage";
+import type { BloodPressureReading } from "@/types/blood-pressure";
+import { formatDateTime, getBloodPressureLevel } from "@/utils/blood-pressure-utils";
 
 export default function HomeScreen() {
-  const { user, loading, isAuthenticated, logout } = useAuth();
-  const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const colorScheme = useColorScheme();
+  const colors = Colors[colorScheme ?? "light"];
+  const insets = useSafeAreaInsets();
   const router = useRouter();
 
-  useEffect(() => {
-    console.log("[HomeScreen] Auth state:", {
-      hasUser: !!user,
-      loading,
-      isAuthenticated,
-      user: user ? { id: user.id, openId: user.openId, name: user.name, email: user.email } : null,
-    });
-  }, [user, loading, isAuthenticated]);
+  const [latestReading, setLatestReading] = useState<BloodPressureReading | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
 
-  const handleLogin = async () => {
+  // 入力フォームの状態
+  const [systolic, setSystolic] = useState("");
+  const [diastolic, setDiastolic] = useState("");
+  const [pulse, setPulse] = useState("");
+
+  // 最新の測定データを読み込み
+  const loadLatestReading = useCallback(async () => {
+    setLoading(true);
     try {
-      console.log("[Auth] Login button clicked");
-      setIsLoggingIn(true);
-      const loginUrl = getLoginUrl();
-      console.log("[Auth] Generated login URL:", loginUrl);
-
-      // On web, use direct redirect in same tab
-      // On mobile, use WebBrowser to open OAuth in a separate context
-      if (Platform.OS === "web") {
-        console.log("[Auth] Web platform: redirecting to OAuth in same tab...");
-        window.location.href = loginUrl;
-        return;
-      }
-
-      // Mobile: Open OAuth URL in browser
-      // The OAuth server will redirect to our deep link (manusapp://oauth/callback?code=...&state=...)
-      console.log("[Auth] Opening OAuth URL in browser...");
-      const result = await WebBrowser.openAuthSessionAsync(
-        loginUrl,
-        undefined, // Deep link is already configured in getLoginUrl, so no need to specify here
-        {
-          preferEphemeralSession: false,
-          showInRecents: true,
-        },
-      );
-
-      console.log("[Auth] WebBrowser result:", result);
-      if (result.type === "cancel") {
-        console.log("[Auth] OAuth cancelled by user");
-      } else if (result.type === "dismiss") {
-        console.log("[Auth] OAuth dismissed");
-      } else if (result.type === "success" && result.url) {
-        console.log("[Auth] OAuth session successful, navigating to callback:", result.url);
-        // Extract code and state from the URL
-        try {
-          // Parse the URL - it might be exp:// or a regular URL
-          let url: URL;
-          if (result.url.startsWith("exp://") || result.url.startsWith("exps://")) {
-            // For exp:// URLs, we need to parse them differently
-            // Format: exp://192.168.31.156:8081/--/oauth/callback?code=...&state=...
-            const urlStr = result.url.replace(/^exp(s)?:\/\//, "http://");
-            url = new URL(urlStr);
-          } else {
-            url = new URL(result.url);
-          }
-
-          const code = url.searchParams.get("code");
-          const state = url.searchParams.get("state");
-          const error = url.searchParams.get("error");
-
-          console.log("[Auth] Extracted params from callback URL:", {
-            code: code?.substring(0, 20) + "...",
-            state: state?.substring(0, 20) + "...",
-            error,
-          });
-
-          if (error) {
-            console.error("[Auth] OAuth error in callback:", error);
-            return;
-          }
-
-          if (code && state) {
-            // Navigate to callback route with params
-            console.log("[Auth] Navigating to callback route with params...");
-            router.push({
-              pathname: "/oauth/callback" as any,
-              params: { code, state },
-            });
-          } else {
-            console.error("[Auth] Missing code or state in callback URL");
-          }
-        } catch (err) {
-          console.error("[Auth] Failed to parse callback URL:", err, result.url);
-          // Fallback: try parsing with regex
-          const codeMatch = result.url.match(/[?&]code=([^&]+)/);
-          const stateMatch = result.url.match(/[?&]state=([^&]+)/);
-
-          if (codeMatch && stateMatch) {
-            const code = decodeURIComponent(codeMatch[1]);
-            const state = decodeURIComponent(stateMatch[1]);
-            console.log("[Auth] Fallback: extracted params via regex, navigating...");
-            router.push({
-              pathname: "/oauth/callback" as any,
-              params: { code, state },
-            });
-          } else {
-            console.error("[Auth] Could not extract code/state from URL");
-          }
-        }
-      }
+      const reading = await getLatestReading();
+      setLatestReading(reading);
     } catch (error) {
-      console.error("[Auth] Login error:", error);
+      console.error("Failed to load latest reading:", error);
     } finally {
-      setIsLoggingIn(false);
+      setLoading(false);
+    }
+  }, []);
+
+  // 画面がフォーカスされたときに最新データを再読み込み
+  useFocusEffect(
+    useCallback(() => {
+      loadLatestReading();
+    }, [loadLatestReading]),
+  );
+
+  // データ保存
+  const handleSave = async () => {
+    const sys = parseInt(systolic, 10);
+    const dia = parseInt(diastolic, 10);
+    const pul = parseInt(pulse, 10);
+
+    // バリデーション
+    if (!systolic || !diastolic || !pulse) {
+      Alert.alert("入力エラー", "すべての項目を入力してください。");
+      return;
+    }
+
+    if (isNaN(sys) || isNaN(dia) || isNaN(pul)) {
+      Alert.alert("入力エラー", "数値を入力してください。");
+      return;
+    }
+
+    if (sys < 50 || sys > 250) {
+      Alert.alert("入力エラー", "収縮期血圧は50〜250の範囲で入力してください。");
+      return;
+    }
+
+    if (dia < 30 || dia > 150) {
+      Alert.alert("入力エラー", "拡張期血圧は30〜150の範囲で入力してください。");
+      return;
+    }
+
+    if (pul < 30 || pul > 200) {
+      Alert.alert("入力エラー", "脈拍は30〜200の範囲で入力してください。");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      await saveReading({
+        systolic: sys,
+        diastolic: dia,
+        pulse: pul,
+        measuredAt: new Date().toISOString(),
+      });
+
+      Alert.alert("保存完了", "測定データを保存しました。");
+      setSystolic("");
+      setDiastolic("");
+      setPulse("");
+      await loadLatestReading();
+    } catch (error) {
+      console.error("Failed to save reading:", error);
+      Alert.alert("エラー", "データの保存に失敗しました。");
+    } finally {
+      setSaving(false);
     }
   };
 
-  return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: "#A1CEDC", dark: "#1D3D47" }}
-      headerImage={
-        <Image
-          source={require("@/assets/images/partial-react-logo.png")}
-          style={styles.reactLogo}
-        />
-      }
-    >
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Welcome!</ThemedText>
-        <HelloWave />
-      </ThemedView>
-      <ThemedView style={styles.authContainer}>
-        {loading ? (
-          <ActivityIndicator />
-        ) : isAuthenticated && user ? (
-          <ThemedView style={styles.userInfo}>
-            <ThemedText type="subtitle">Logged in as</ThemedText>
-            <ThemedText type="defaultSemiBold">{user.name || user.email || user.openId}</ThemedText>
-            <Pressable onPress={logout} style={styles.logoutButton}>
-              <ThemedText style={styles.logoutText}>Logout</ThemedText>
-            </Pressable>
-          </ThemedView>
-        ) : (
-          <Pressable
-            onPress={handleLogin}
-            disabled={isLoggingIn}
-            style={[styles.loginButton, isLoggingIn && styles.loginButtonDisabled]}
-          >
-            {isLoggingIn ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <ThemedText style={styles.loginText}>Login</ThemedText>
-            )}
-          </Pressable>
-        )}
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 1: Try it</ThemedText>
-        <ThemedText>
-          Edit <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> to see changes.
-          Press{" "}
-          <ThemedText type="defaultSemiBold">
-            {Platform.select({
-              ios: "cmd + d",
-              android: "cmd + m",
-              web: "F12",
-            })}
-          </ThemedText>{" "}
-          to open developer tools.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <Link href="/modal">
-          <Link.Trigger>
-            <ThemedText type="subtitle">Step 2: Explore</ThemedText>
-          </Link.Trigger>
-          <Link.Preview />
-          <Link.Menu>
-            <Link.MenuAction title="Action" icon="cube" onPress={() => alert("Action pressed")} />
-            <Link.MenuAction
-              title="Share"
-              icon="square.and.arrow.up"
-              onPress={() => alert("Share pressed")}
-            />
-            <Link.Menu title="More" icon="ellipsis">
-              <Link.MenuAction
-                title="Delete"
-                icon="trash"
-                destructive
-                onPress={() => alert("Delete pressed")}
-              />
-            </Link.Menu>
-          </Link.Menu>
-        </Link>
+  // カメラ画面へ遷移
+  const handleOpenCamera = () => {
+    router.push("/camera" as any);
+  };
 
-        <ThemedText>
-          {`Tap the Explore tab to learn more about what's included in this starter app.`}
-        </ThemedText>
+  const bpLevel = latestReading
+    ? getBloodPressureLevel(latestReading.systolic, latestReading.diastolic)
+    : null;
+
+  return (
+    <ScrollView
+      style={[styles.container, { backgroundColor: colors.background }]}
+      contentContainerStyle={[
+        styles.contentContainer,
+        {
+          paddingTop: Math.max(insets.top, 16),
+          paddingBottom: Math.max(insets.bottom, 24),
+        },
+      ]}
+    >
+      <ThemedView style={styles.header}>
+        <ThemedText type="title">血圧測定</ThemedText>
       </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 3: Get a fresh start</ThemedText>
-        <ThemedText>
-          {`When you're ready, run `}
-          <ThemedText type="defaultSemiBold">npm run reset-project</ThemedText> to get a fresh{" "}
-          <ThemedText type="defaultSemiBold">app</ThemedText> directory. This will move the current{" "}
-          <ThemedText type="defaultSemiBold">app</ThemedText> to{" "}
-          <ThemedText type="defaultSemiBold">app-example</ThemedText>.
+
+      {/* カメラ撮影ボタン */}
+      <Pressable
+        style={[styles.cameraButton, { backgroundColor: colors.tint }]}
+        onPress={handleOpenCamera}
+      >
+        <IconSymbol name="camera.fill" size={32} color="#FFFFFF" />
+        <ThemedText style={styles.cameraButtonText}>カメラで撮影</ThemedText>
+      </Pressable>
+
+      {/* 最新の測定データ */}
+      {loading ? (
+        <ThemedView style={[styles.card, { backgroundColor: colors.card }]}>
+          <ActivityIndicator size="large" color={colors.tint} />
+        </ThemedView>
+      ) : latestReading ? (
+        <ThemedView style={[styles.card, { backgroundColor: colors.card }]}>
+          <ThemedText type="subtitle" style={styles.cardTitle}>
+            最新の測定
+          </ThemedText>
+          <ThemedText style={styles.dateText}>{formatDateTime(latestReading.measuredAt)}</ThemedText>
+
+          <View style={styles.readingRow}>
+            <View style={styles.readingItem}>
+              <ThemedText style={styles.readingLabel}>収縮期</ThemedText>
+              <ThemedText style={[styles.readingValue, { color: colors.tint }]}>
+                {latestReading.systolic}
+              </ThemedText>
+              <ThemedText style={styles.readingUnit}>mmHg</ThemedText>
+            </View>
+
+            <View style={styles.readingItem}>
+              <ThemedText style={styles.readingLabel}>拡張期</ThemedText>
+              <ThemedText style={[styles.readingValue, { color: colors.secondary }]}>
+                {latestReading.diastolic}
+              </ThemedText>
+              <ThemedText style={styles.readingUnit}>mmHg</ThemedText>
+            </View>
+
+            <View style={styles.readingItem}>
+              <ThemedText style={styles.readingLabel}>脈拍</ThemedText>
+              <ThemedText style={[styles.readingValue, { color: colors.icon }]}>
+                {latestReading.pulse}
+              </ThemedText>
+              <ThemedText style={styles.readingUnit}>/min</ThemedText>
+            </View>
+          </View>
+
+          {bpLevel && (
+            <View style={[styles.levelBadge, { backgroundColor: bpLevel.color }]}>
+              <ThemedText style={styles.levelText}>{bpLevel.label}</ThemedText>
+            </View>
+          )}
+        </ThemedView>
+      ) : (
+        <ThemedView style={[styles.card, { backgroundColor: colors.card }]}>
+          <ThemedText style={styles.emptyText}>まだ測定データがありません</ThemedText>
+        </ThemedView>
+      )}
+
+      {/* 手動入力フォーム */}
+      <ThemedView style={[styles.card, { backgroundColor: colors.card }]}>
+        <ThemedText type="subtitle" style={styles.cardTitle}>
+          手動入力
         </ThemedText>
+
+        <View style={styles.inputRow}>
+          <View style={styles.inputGroup}>
+            <ThemedText style={styles.inputLabel}>収縮期 (SYS)</ThemedText>
+            <TextInput
+              style={[styles.input, { color: colors.text, borderColor: colors.icon }]}
+              value={systolic}
+              onChangeText={setSystolic}
+              keyboardType="numeric"
+              placeholder="120"
+              placeholderTextColor={colors.icon}
+            />
+            <ThemedText style={styles.inputUnit}>mmHg</ThemedText>
+          </View>
+
+          <View style={styles.inputGroup}>
+            <ThemedText style={styles.inputLabel}>拡張期 (DIA)</ThemedText>
+            <TextInput
+              style={[styles.input, { color: colors.text, borderColor: colors.icon }]}
+              value={diastolic}
+              onChangeText={setDiastolic}
+              keyboardType="numeric"
+              placeholder="80"
+              placeholderTextColor={colors.icon}
+            />
+            <ThemedText style={styles.inputUnit}>mmHg</ThemedText>
+          </View>
+
+          <View style={styles.inputGroup}>
+            <ThemedText style={styles.inputLabel}>脈拍 (PUL)</ThemedText>
+            <TextInput
+              style={[styles.input, { color: colors.text, borderColor: colors.icon }]}
+              value={pulse}
+              onChangeText={setPulse}
+              keyboardType="numeric"
+              placeholder="72"
+              placeholderTextColor={colors.icon}
+            />
+            <ThemedText style={styles.inputUnit}>/min</ThemedText>
+          </View>
+        </View>
+
+        <Pressable
+          style={[
+            styles.saveButton,
+            { backgroundColor: colors.tint },
+            saving && styles.saveButtonDisabled,
+          ]}
+          onPress={handleSave}
+          disabled={saving}
+        >
+          {saving ? (
+            <ActivityIndicator color="#FFFFFF" />
+          ) : (
+            <>
+              <IconSymbol name="checkmark.circle.fill" size={24} color="#FFFFFF" />
+              <ThemedText style={styles.saveButtonText}>保存</ThemedText>
+            </>
+          )}
+        </Pressable>
       </ThemedView>
-    </ParallaxScrollView>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  titleContainer: {
+  container: {
+    flex: 1,
+  },
+  contentContainer: {
+    paddingHorizontal: 16,
+  },
+  header: {
+    marginBottom: 24,
+    backgroundColor: "transparent",
+  },
+  cameraButton: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
-  },
-  stepContainer: {
-    gap: 8,
-    marginBottom: 8,
-  },
-  reactLogo: {
-    height: 178,
-    width: 290,
-    bottom: 0,
-    left: 0,
-    position: "absolute",
-  },
-  authContainer: {
-    marginBottom: 16,
-    padding: 16,
-    borderRadius: 8,
-    backgroundColor: "rgba(0, 0, 0, 0.05)",
-  },
-  userInfo: {
-    gap: 8,
-    alignItems: "center",
-  },
-  loginButton: {
-    backgroundColor: "#007AFF",
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 8,
-    alignItems: "center",
     justifyContent: "center",
-    minHeight: 44,
+    paddingVertical: 20,
+    paddingHorizontal: 24,
+    borderRadius: 16,
+    marginBottom: 24,
+    gap: 12,
   },
-  loginButtonDisabled: {
-    opacity: 0.6,
-  },
-  loginText: {
-    color: "#fff",
-    fontSize: 16,
+  cameraButtonText: {
+    color: "#FFFFFF",
+    fontSize: 18,
     fontWeight: "600",
   },
-  logoutButton: {
-    marginTop: 8,
+  card: {
+    padding: 20,
+    borderRadius: 16,
+    marginBottom: 16,
+  },
+  cardTitle: {
+    marginBottom: 12,
+  },
+  dateText: {
+    fontSize: 14,
+    marginBottom: 16,
+    opacity: 0.7,
+  },
+  readingRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 16,
+  },
+  readingItem: {
+    flex: 1,
+    alignItems: "center",
+  },
+  readingLabel: {
+    fontSize: 12,
+    marginBottom: 4,
+    opacity: 0.7,
+  },
+  readingValue: {
+    fontSize: 32,
+    fontWeight: "bold",
+    lineHeight: 40,
+  },
+  readingUnit: {
+    fontSize: 12,
+    marginTop: 4,
+    opacity: 0.7,
+  },
+  levelBadge: {
     paddingVertical: 8,
     paddingHorizontal: 16,
-    borderRadius: 6,
-    backgroundColor: "rgba(255, 59, 48, 0.1)",
+    borderRadius: 8,
+    alignSelf: "center",
   },
-  logoutText: {
-    color: "#FF3B30",
+  levelText: {
+    color: "#FFFFFF",
     fontSize: 14,
-    fontWeight: "500",
+    fontWeight: "600",
+  },
+  emptyText: {
+    textAlign: "center",
+    opacity: 0.5,
+    fontSize: 16,
+  },
+  inputRow: {
+    flexDirection: "row",
+    gap: 12,
+    marginBottom: 20,
+  },
+  inputGroup: {
+    flex: 1,
+  },
+  inputLabel: {
+    fontSize: 12,
+    marginBottom: 8,
+    fontWeight: "600",
+  },
+  input: {
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    fontSize: 18,
+    fontWeight: "600",
+    textAlign: "center",
+    marginBottom: 4,
+  },
+  inputUnit: {
+    fontSize: 10,
+    textAlign: "center",
+    opacity: 0.7,
+  },
+  saveButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 16,
+    borderRadius: 12,
+    gap: 8,
+  },
+  saveButtonDisabled: {
+    opacity: 0.6,
+  },
+  saveButtonText: {
+    color: "#FFFFFF",
+    fontSize: 16,
+    fontWeight: "600",
   },
 });

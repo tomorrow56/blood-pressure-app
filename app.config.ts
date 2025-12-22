@@ -12,11 +12,11 @@ const schemeFromBundleId = `manus${timestamp}`;
 
 const env = {
   // App branding - update these values directly (do not use env vars)
-  appName: '血圧管理アプリ',
+  appName: '血圧ノート',
   appSlug: 'blood_pressure_app',
   // S3 URL of the app logo - set this to the URL returned by generate_image when creating custom logo
   // Leave empty to use the default icon from assets/images/icon.png
-  logoUrl: '',
+  logoUrl: 'https://files.manuscdn.com/user_upload_by_module/session_file/310419663029890007/xKtsMkFpvsoAYxTD.png',
   scheme: schemeFromBundleId,
   iosBundleId: bundleId,
   androidPackage: bundleId,
@@ -79,6 +79,18 @@ const config: ExpoConfig = {
         dark: {
           backgroundColor: "#000000",
         },
+      },
+    ],
+    [
+      "expo-camera",
+      {
+        cameraPermission: "血圧計の画面を撮影するためにカメラを使用します。",
+      },
+    ],
+    [
+      "expo-image-picker",
+      {
+        photosPermission: "血圧計の画像を選択するためにフォトライブラリへのアクセスが必要です。",
       },
     ],
   ],
