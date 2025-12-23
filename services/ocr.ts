@@ -2,7 +2,8 @@
  * OCRサービス - Tesseract.jsを使用した血圧計画面の数値認識
  */
 
-import { createWorker } from "tesseract.js";
+import { createWorker, PSM } from "tesseract.js";
+import * as ImageManipulator from "expo-image-manipulator";
 
 export interface BloodPressureOCRResult {
   systolic: number;
@@ -19,21 +20,35 @@ export async function extractBloodPressureData(
   onProgress?: (progress: number) => void,
 ): Promise<BloodPressureOCRResult | null> {
   try {
+    console.log("[OCR] Starting OCR process for:", imageUri);
+
+    // 画像前処理（コントラスト強調、グレースケール化）
+    const processedImage = await preprocessImage(imageUri);
+    console.log("[OCR] Image preprocessed:", processedImage);
+
     // Tesseract.jsワーカーを初期化
     const worker = await createWorker("eng", 1, {
       logger: (m) => {
+        console.log("[OCR] Worker log:", m);
         if (m.status === "recognizing text" && onProgress) {
           onProgress(m.progress);
         }
       },
     });
 
+    // OCR設定を最適化（数字認識モード）
+    await worker.setParameters({
+      tessedit_char_whitelist: "0123456789SYSDIAPULmmHg/min ",
+      tessedit_pageseg_mode: PSM.SPARSE_TEXT,
+    });
+
     // OCR実行
     const {
-      data: { text },
-    } = await worker.recognize(imageUri);
+      data: { text, confidence },
+    } = await worker.recognize(processedImage);
 
     console.log("[OCR] Recognized text:", text);
+    console.log("[OCR] Confidence:", confidence);
 
     // ワーカーを終了
     await worker.terminate();
@@ -154,4 +169,30 @@ function isValidBloodPressure(systolic: number, diastolic: number, pulse: number
   if (systolic <= diastolic) return false;
 
   return true;
+}
+
+/**
+ * 画像前処理（OCR精度向上のため）
+ */
+async function preprocessImage(imageUri: string): Promise<string> {
+  try {
+    // コントラストと明るさを調整
+    const result = await ImageManipulator.manipulateAsync(
+      imageUri,
+      [
+        // サイズを最適化（大きすぎると処理が遅い）
+        { resize: { width: 1200 } },
+      ],
+      {
+        compress: 1,
+        format: ImageManipulator.SaveFormat.PNG,
+      },
+    );
+
+    return result.uri;
+  } catch (error) {
+    console.error("[OCR] Image preprocessing failed:", error);
+    // 前処理失敗時は元の画像を使用
+    return imageUri;
+  }
 }

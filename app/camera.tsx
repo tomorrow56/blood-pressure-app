@@ -73,10 +73,16 @@ export default function CameraScreen() {
       if (!result) {
         Alert.alert(
           "認識失敗",
-          "血圧データを認識できませんでした。手動で入力してください。",
+          "血圧データを認識できませんでした。\n\nホーム画面の手動入力フォームで入力してください。",
+          [
+            { text: "キャンセル", style: "cancel" },
+            { 
+              text: "手動入力", 
+              onPress: () => router.back() 
+            },
+          ],
         );
         setProcessing(false);
-        router.back();
         return;
       }
 
@@ -130,10 +136,16 @@ export default function CameraScreen() {
       if (!ocrResult) {
         Alert.alert(
           "認識失敗",
-          "血圧データを認識できませんでした。手動で入力してください。",
+          "血圧データを認識できませんでした。\n\nホーム画面の手動入力フォームで入力してください。",
+          [
+            { text: "キャンセル", style: "cancel" },
+            { 
+              text: "手動入力", 
+              onPress: () => router.back() 
+            },
+          ],
         );
         setProcessing(false);
-        router.back();
         return;
       }
 
