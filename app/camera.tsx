@@ -11,27 +11,7 @@ import { ThemedView } from "@/components/themed-view";
 import { Colors } from "@/constants/theme";
 import { useColorScheme } from "@/hooks/use-color-scheme";
 import { saveReading } from "@/services/storage";
-
-// OCR処理のモック関数（実際のOCR APIに置き換える）
-async function extractBloodPressureData(imageUri: string): Promise<{
-  systolic: number;
-  diastolic: number;
-  pulse: number;
-} | null> {
-  // TODO: 実際のOCR API（Google Vision API など）を統合
-  // 現在はモックデータを返す
-  console.log("Processing image:", imageUri);
-  
-  // シミュレーション用の遅延
-  await new Promise((resolve) => setTimeout(resolve, 1500));
-  
-  // モックデータ（実際はOCR APIから取得）
-  return {
-    systolic: 120,
-    diastolic: 80,
-    pulse: 72,
-  };
-}
+import { extractBloodPressureData } from "@/services/ocr";
 
 export default function CameraScreen() {
   const colorScheme = useColorScheme();
@@ -42,6 +22,7 @@ export default function CameraScreen() {
 
   const [permission, requestPermission] = useCameraPermissions();
   const [processing, setProcessing] = useState(false);
+  const [ocrProgress, setOcrProgress] = useState(0);
 
   if (!permission) {
     return (
@@ -75,6 +56,7 @@ export default function CameraScreen() {
 
     try {
       setProcessing(true);
+      setOcrProgress(0);
       const photo = await cameraRef.current.takePictureAsync();
       
       if (!photo) {
@@ -84,7 +66,9 @@ export default function CameraScreen() {
       }
 
       // OCR処理
-      const result = await extractBloodPressureData(photo.uri);
+      const result = await extractBloodPressureData(photo.uri, (progress) => {
+        setOcrProgress(Math.round(progress * 100));
+      });
 
       if (!result) {
         Alert.alert(
@@ -106,7 +90,12 @@ export default function CameraScreen() {
 
       Alert.alert(
         "認識成功",
-        `収縮期: ${result.systolic} mmHg\n拡張期: ${result.diastolic} mmHg\n脈拍: ${result.pulse} /min\n\nデータを保存しました。`,
+        `収縮期: ${result.systolic} mmHg
+拡張期: ${result.diastolic} mmHg
+脈拍: ${result.pulse} /min
+信頼度: ${Math.round(result.confidence * 100)}%
+
+データを保存しました。`,
         [{ text: "OK", onPress: () => router.back() }],
       );
     } catch (error) {
@@ -130,10 +119,13 @@ export default function CameraScreen() {
       if (result.canceled) return;
 
       setProcessing(true);
+      setOcrProgress(0);
       const imageUri = result.assets[0].uri;
 
       // OCR処理
-      const ocrResult = await extractBloodPressureData(imageUri);
+      const ocrResult = await extractBloodPressureData(imageUri, (progress) => {
+        setOcrProgress(Math.round(progress * 100));
+      });
 
       if (!ocrResult) {
         Alert.alert(
@@ -155,7 +147,12 @@ export default function CameraScreen() {
 
       Alert.alert(
         "認識成功",
-        `収縮期: ${ocrResult.systolic} mmHg\n拡張期: ${ocrResult.diastolic} mmHg\n脈拍: ${ocrResult.pulse} /min\n\nデータを保存しました。`,
+        `収縮期: ${ocrResult.systolic} mmHg
+拡張期: ${ocrResult.diastolic} mmHg
+脈拍: ${ocrResult.pulse} /min
+信頼度: ${Math.round(ocrResult.confidence * 100)}%
+
+データを保存しました。`,
         [{ text: "OK", onPress: () => router.back() }],
       );
     } catch (error) {
@@ -195,6 +192,11 @@ export default function CameraScreen() {
             <ThemedText style={styles.guideText}>
               血圧計の画面をフレーム内に収めてください
             </ThemedText>
+            {processing && ocrProgress > 0 && (
+              <ThemedText style={styles.progressText}>
+                認識中... {ocrProgress}%
+              </ThemedText>
+            )}
           </View>
 
           {/* コントロール */}
@@ -293,17 +295,29 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
   },
   guideFrame: {
-    width: 280,
-    height: 200,
-    borderWidth: 3,
+    width: "85%",
+    aspectRatio: 4 / 3,
+    maxWidth: 400,
+    borderWidth: 4,
     borderColor: "#FFFFFF",
-    borderRadius: 12,
+    borderRadius: 16,
     backgroundColor: "transparent",
   },
   guideText: {
     color: "#FFFFFF",
-    fontSize: 14,
-    marginTop: 16,
+    fontSize: 16,
+    marginTop: 20,
+    textAlign: "center",
+    textShadowColor: "rgba(0, 0, 0, 0.75)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
+    paddingHorizontal: 20,
+  },
+  progressText: {
+    color: "#FFFFFF",
+    fontSize: 18,
+    fontWeight: "bold",
+    marginTop: 12,
     textAlign: "center",
     textShadowColor: "rgba(0, 0, 0, 0.75)",
     textShadowOffset: { width: 0, height: 1 },
