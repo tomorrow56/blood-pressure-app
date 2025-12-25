@@ -1,4 +1,5 @@
-import { Alert, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { useState, useEffect } from "react";
+import { Alert, Pressable, ScrollView, StyleSheet, View, TextInput, ActivityIndicator } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { IconSymbol } from "@/components/ui/icon-symbol";
@@ -7,11 +8,50 @@ import { ThemedView } from "@/components/themed-view";
 import { Colors } from "@/constants/theme";
 import { useColorScheme } from "@/hooks/use-color-scheme";
 import { clearAllReadings } from "@/services/storage";
+import { getVisionAPIKey, setVisionAPIKey } from "@/services/ocr";
 
 export default function SettingsScreen() {
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? "light"];
   const insets = useSafeAreaInsets();
+
+  const [apiKey, setApiKeyState] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    loadApiKey();
+  }, []);
+
+  const loadApiKey = async () => {
+    try {
+      const key = await getVisionAPIKey();
+      if (key) {
+        setApiKeyState(key);
+      }
+    } catch (error) {
+      console.error("Failed to load API key:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSaveApiKey = async () => {
+    if (!apiKey.trim()) {
+      Alert.alert("エラー", "APIキーを入力してください。");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      await setVisionAPIKey(apiKey.trim());
+      Alert.alert("成功", "APIキーを保存しました。");
+    } catch (error) {
+      Alert.alert("エラー", "APIキーの保存に失敗しました。");
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const handleClearData = () => {
     Alert.alert(
@@ -51,6 +91,65 @@ export default function SettingsScreen() {
         設定
       </ThemedText>
 
+      {/* Vision API設定 */}
+      <ThemedView style={[styles.section, { backgroundColor: colors.card }]}>
+        <ThemedText type="subtitle" style={styles.sectionTitle}>
+          Google Cloud Vision API
+        </ThemedText>
+        <ThemedText style={styles.instructionText}>
+          血圧計の画面を自動認識するために、Google Cloud Vision APIキーが必要です。
+        </ThemedText>
+        <Pressable
+          onPress={() => {
+            Alert.alert(
+              "APIキーの取得方法",
+              "1. Google Cloud Console (console.cloud.google.com) にアクセス\n2. プロジェクトを作成または選択\n3. Vision API を有効化\n4. 認証情報 > APIキーでキーを作成\n\n月間 1000 リクエストまで無料です。"
+            );
+          }}
+        >
+          <ThemedText style={[styles.instructionText, { color: colors.tint, marginTop: 8 }]}>
+            APIキーの取得方法を表示 ›
+          </ThemedText>
+        </Pressable>
+
+        {loading ? (
+          <ActivityIndicator style={{ marginTop: 16 }} />
+        ) : (
+          <>
+            <TextInput
+              style={[
+                styles.input,
+                {
+                  backgroundColor: colorScheme === "dark" ? "#2C2C2E" : "#F2F2F7",
+                  color: colors.text,
+                },
+              ]}
+              value={apiKey}
+              onChangeText={setApiKeyState}
+              placeholder="AIzaSy..."
+              placeholderTextColor="#999"
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+            <Pressable
+              style={[
+                styles.saveButton,
+                { backgroundColor: colors.tint },
+                saving && styles.saveButtonDisabled,
+              ]}
+              onPress={handleSaveApiKey}
+              disabled={saving}
+            >
+              {saving ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <ThemedText style={styles.saveButtonText}>保存</ThemedText>
+              )}
+            </Pressable>
+          </>
+        )}
+      </ThemedView>
+
       {/* アプリ情報 */}
       <ThemedView style={[styles.section, { backgroundColor: colors.card }]}>
         <ThemedText type="subtitle" style={styles.sectionTitle}>
@@ -62,7 +161,7 @@ export default function SettingsScreen() {
         </View>
         <View style={styles.infoRow}>
           <ThemedText style={styles.infoLabel}>バージョン</ThemedText>
-          <ThemedText style={styles.infoValue}>1.0.0</ThemedText>
+          <ThemedText style={styles.infoValue}>1.1.0</ThemedText>
         </View>
       </ThemedView>
 
@@ -209,5 +308,27 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 18,
     opacity: 0.7,
+  },
+  input: {
+    marginTop: 16,
+    padding: 12,
+    borderRadius: 8,
+    fontSize: 14,
+    fontFamily: "monospace",
+  },
+  saveButton: {
+    marginTop: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    alignItems: "center",
+  },
+  saveButtonDisabled: {
+    opacity: 0.6,
+  },
+  saveButtonText: {
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: "600",
   },
 });

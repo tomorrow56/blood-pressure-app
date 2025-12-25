@@ -1,9 +1,8 @@
 /**
- * OCRサービス - Tesseract.jsを使用した血圧計画面の数値認識
+ * OCRサービス - Google Cloud Vision APIを使用した血圧計画面の数値認識
  */
 
-import { createWorker, PSM } from "tesseract.js";
-import * as ImageManipulator from "expo-image-manipulator";
+import { recognizeWithVisionAPI, hasVisionAPIKey } from './vision-ocr';
 
 export interface BloodPressureOCRResult {
   systolic: number;
@@ -20,179 +19,41 @@ export async function extractBloodPressureData(
   onProgress?: (progress: number) => void,
 ): Promise<BloodPressureOCRResult | null> {
   try {
-    console.log("[OCR] Starting OCR process for:", imageUri);
+    console.log('[OCR] Starting blood pressure recognition...');
+    onProgress?.(0.1);
 
-    // 画像前処理（コントラスト強調、グレースケール化）
-    const processedImage = await preprocessImage(imageUri);
-    console.log("[OCR] Image preprocessed:", processedImage);
+    // Vision APIキーが設定されているか確認
+    const hasApiKey = await hasVisionAPIKey();
+    if (!hasApiKey) {
+      console.error('[OCR] Vision API key not set');
+      throw new Error('Google Cloud Vision APIキーが設定されていません。設定画面でAPIキーを設定してください。');
+    }
 
-    // Tesseract.jsワーカーを初期化
-    const worker = await createWorker("eng", 1, {
-      logger: (m) => {
-        console.log("[OCR] Worker log:", m);
-        if (m.status === "recognizing text" && onProgress) {
-          onProgress(m.progress);
-        }
-      },
-    });
+    // Vision APIで認識
+    const result = await recognizeWithVisionAPI(imageUri, onProgress);
 
-    // OCR設定を最適化（数字認識モード）
-    await worker.setParameters({
-      tessedit_char_whitelist: "0123456789SYSDIAPULmmHg/min ",
-      tessedit_pageseg_mode: PSM.SPARSE_TEXT,
-    });
+    if (!result) {
+      console.error('[OCR] Vision API returned no result');
+      return null;
+    }
 
-    // OCR実行
-    const {
-      data: { text, confidence },
-    } = await worker.recognize(processedImage);
+    // 結果を変換
+    if (!result.systolic && !result.diastolic) {
+      console.error('[OCR] No valid blood pressure data extracted');
+      return null;
+    }
 
-    console.log("[OCR] Recognized text:", text);
-    console.log("[OCR] Confidence:", confidence);
-
-    // ワーカーを終了
-    await worker.terminate();
-
-    // テキストから数値を抽出
-    const result = parseBloodPressureText(text);
-
-    return result;
+    return {
+      systolic: result.systolic || 120,
+      diastolic: result.diastolic || 80,
+      pulse: result.pulse || 72,
+      confidence: result.confidence,
+    };
   } catch (error) {
-    console.error("[OCR] Error:", error);
-    return null;
+    console.error('[OCR] Error during OCR:', error);
+    throw error;
   }
 }
 
-/**
- * OCRで認識したテキストから血圧データをパース
- */
-function parseBloodPressureText(text: string): BloodPressureOCRResult | null {
-  // テキストを正規化（改行をスペースに、複数スペースを1つに）
-  const normalizedText = text.replace(/\s+/g, " ").toUpperCase();
-
-  console.log("[OCR] Normalized text:", normalizedText);
-
-  // 数値を全て抽出
-  const numbers = normalizedText.match(/\d{2,3}/g);
-
-  if (!numbers || numbers.length < 3) {
-    console.log("[OCR] Not enough numbers found:", numbers);
-    return null;
-  }
-
-  console.log("[OCR] Found numbers:", numbers);
-
-  // パターン1: "SYS", "DIA", "PUL" のラベルを探す
-  const sysMatch = normalizedText.match(/SYS[:\s]*(\d{2,3})/);
-  const diaMatch = normalizedText.match(/DIA[:\s]*(\d{2,3})/);
-  const pulMatch = normalizedText.match(/PUL[:\s]*(\d{2,3})/);
-
-  if (sysMatch && diaMatch && pulMatch) {
-    const systolic = parseInt(sysMatch[1], 10);
-    const diastolic = parseInt(diaMatch[1], 10);
-    const pulse = parseInt(pulMatch[1], 10);
-
-    if (isValidBloodPressure(systolic, diastolic, pulse)) {
-      return {
-        systolic,
-        diastolic,
-        pulse,
-        confidence: 0.9,
-      };
-    }
-  }
-
-  // パターン2: 数値の順序から推測（大きい順に SYS, DIA, PUL）
-  const numValues = numbers.map((n) => parseInt(n, 10)).filter((n) => n > 0 && n < 300);
-
-  if (numValues.length >= 3) {
-    // 血圧の範囲で妥当な値を探す
-    const systolicCandidates = numValues.filter((n) => n >= 80 && n <= 250);
-    const diastolicCandidates = numValues.filter((n) => n >= 40 && n <= 150);
-    const pulseCandidates = numValues.filter((n) => n >= 40 && n <= 200);
-
-    // 最も妥当な組み合わせを探す
-    for (const sys of systolicCandidates) {
-      for (const dia of diastolicCandidates) {
-        for (const pul of pulseCandidates) {
-          if (sys > dia && isValidBloodPressure(sys, dia, pul)) {
-            return {
-              systolic: sys,
-              diastolic: dia,
-              pulse: pul,
-              confidence: 0.7,
-            };
-          }
-        }
-      }
-    }
-  }
-
-  // パターン3: 最初の3つの数値を使用（フォールバック）
-  if (numValues.length >= 3) {
-    // 数値を降順にソート
-    const sorted = [...numValues].sort((a, b) => b - a);
-
-    // 最も大きい値をSYS、次をDIA、次をPULと仮定
-    const systolic = sorted[0];
-    const diastolic = sorted[1];
-    const pulse = sorted[2];
-
-    if (isValidBloodPressure(systolic, diastolic, pulse)) {
-      return {
-        systolic,
-        diastolic,
-        pulse,
-        confidence: 0.5,
-      };
-    }
-  }
-
-  console.log("[OCR] Could not parse blood pressure data");
-  return null;
-}
-
-/**
- * 血圧データの妥当性をチェック
- */
-function isValidBloodPressure(systolic: number, diastolic: number, pulse: number): boolean {
-  // 収縮期血圧: 80-250 mmHg
-  if (systolic < 80 || systolic > 250) return false;
-
-  // 拡張期血圧: 40-150 mmHg
-  if (diastolic < 40 || diastolic > 150) return false;
-
-  // 脈拍: 40-200 /min
-  if (pulse < 40 || pulse > 200) return false;
-
-  // 収縮期 > 拡張期
-  if (systolic <= diastolic) return false;
-
-  return true;
-}
-
-/**
- * 画像前処理（OCR精度向上のため）
- */
-async function preprocessImage(imageUri: string): Promise<string> {
-  try {
-    // コントラストと明るさを調整
-    const result = await ImageManipulator.manipulateAsync(
-      imageUri,
-      [
-        // サイズを最適化（大きすぎると処理が遅い）
-        { resize: { width: 1200 } },
-      ],
-      {
-        compress: 1,
-        format: ImageManipulator.SaveFormat.PNG,
-      },
-    );
-
-    return result.uri;
-  } catch (error) {
-    console.error("[OCR] Image preprocessing failed:", error);
-    // 前処理失敗時は元の画像を使用
-    return imageUri;
-  }
-}
+// 後方互換性のため、vision-ocrの関数をエクスポート
+export { setVisionAPIKey, getVisionAPIKey, hasVisionAPIKey } from './vision-ocr';
