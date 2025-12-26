@@ -91,3 +91,9 @@
 - [x] バックエンドサーバーでのgoogle-key.json読み込み
 - [x] サービスアカウント認証方式の実装
 - [x] google-key.jsonファイルの配置
+
+## GitHubリポジトリ登録
+- [x] .gitignoreにgoogle-key.jsonを追加
+- [x] GitHubリポジトリの作成
+- [ ] 初回コミット
+- [ ] リモートリポジトリへのプッシュ
