@@ -127,8 +127,9 @@ pnpm install
 
 3. **環境変数を設定**
 ```bash
-cp .env.example .env.local
-# .env.localに必要な環境変数を設定
+# .env.localファイルを作成し、必要な環境変数を設定
+touch .env.local
+# 以下の環境変数を設定: DATABASE_URL, JWT_SECRET, OAUTH_SERVER_URL など
 ```
 
 4. **Google Cloud Vision APIの設定**
@@ -173,8 +174,8 @@ pnpm ios
 
 # Androidエミュレーター
 pnpm android
-
 # Webブラウザー
+pnpm dev:metro
 pnpm web
 ```
 
