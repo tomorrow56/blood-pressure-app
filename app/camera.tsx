@@ -11,7 +11,7 @@ import { ThemedView } from "@/components/themed-view";
 import { Colors } from "@/constants/theme";
 import { useColorScheme } from "@/hooks/use-color-scheme";
 import { saveReading } from "@/services/storage";
-import { extractBloodPressureData } from "@/services/ocr";
+import { recognizeBloodPressureImage } from "@/services/ocr-backend";
 
 export default function CameraScreen() {
   const colorScheme = useColorScheme();
@@ -66,14 +66,14 @@ export default function CameraScreen() {
       }
 
       // OCR処理
-      const result = await extractBloodPressureData(photo.uri, (progress) => {
-        setOcrProgress(Math.round(progress * 100));
-      });
+      setOcrProgress(50);
+      const result = await recognizeBloodPressureImage(photo.uri);
+      setOcrProgress(100);
 
-      if (!result) {
+      if (!result.sys || !result.dia || !result.pul) {
         Alert.alert(
           "認識失敗",
-          "血圧データを認識できませんでした。\n\nホーム画面の手動入力フォームで入力してください。",
+          "血圧データを認識できませんでした。手動で入力してください。",
           [
             { text: "キャンセル", style: "cancel" },
             { 
@@ -88,22 +88,15 @@ export default function CameraScreen() {
 
       // データを保存
       await saveReading({
-        systolic: result.systolic,
-        diastolic: result.diastolic,
-        pulse: result.pulse,
+        systolic: result.sys,
+        diastolic: result.dia,
+        pulse: result.pul,
         measuredAt: new Date().toISOString(),
       });
 
-      Alert.alert(
-        "認識成功",
-        `収縮期: ${result.systolic} mmHg
-拡張期: ${result.diastolic} mmHg
-脈拍: ${result.pulse} /min
-信頼度: ${Math.round(result.confidence * 100)}%
-
-データを保存しました。`,
-        [{ text: "OK", onPress: () => router.back() }],
-      );
+      const message = `収縮期: ${result.sys} mmHg\n拡張期: ${result.dia} mmHg\n脈拍: ${result.pul} /min\n信頼度: ${Math.round(result.confidence * 100)}%\n\nデータを保存しました。`;
+      
+      Alert.alert("認識成功", message, [{ text: "OK", onPress: () => router.back() }]);
     } catch (error) {
       console.error("Failed to process image:", error);
       Alert.alert("エラー", "画像の処理に失敗しました。");
@@ -129,14 +122,14 @@ export default function CameraScreen() {
       const imageUri = result.assets[0].uri;
 
       // OCR処理
-      const ocrResult = await extractBloodPressureData(imageUri, (progress) => {
-        setOcrProgress(Math.round(progress * 100));
-      });
+      setOcrProgress(50);
+      const ocrResult = await recognizeBloodPressureImage(imageUri);
+      setOcrProgress(100);
 
-      if (!ocrResult) {
+      if (!ocrResult.sys || !ocrResult.dia || !ocrResult.pul) {
         Alert.alert(
           "認識失敗",
-          "血圧データを認識できませんでした。\n\nホーム画面の手動入力フォームで入力してください。",
+          "血圧データを認識できませんでした。手動で入力してください。",
           [
             { text: "キャンセル", style: "cancel" },
             { 
@@ -151,22 +144,15 @@ export default function CameraScreen() {
 
       // データを保存
       await saveReading({
-        systolic: ocrResult.systolic,
-        diastolic: ocrResult.diastolic,
-        pulse: ocrResult.pulse,
+        systolic: ocrResult.sys,
+        diastolic: ocrResult.dia,
+        pulse: ocrResult.pul,
         measuredAt: new Date().toISOString(),
       });
 
-      Alert.alert(
-        "認識成功",
-        `収縮期: ${ocrResult.systolic} mmHg
-拡張期: ${ocrResult.diastolic} mmHg
-脈拍: ${ocrResult.pulse} /min
-信頼度: ${Math.round(ocrResult.confidence * 100)}%
-
-データを保存しました。`,
-        [{ text: "OK", onPress: () => router.back() }],
-      );
+      const message = `収縮期: ${ocrResult.sys} mmHg\n拡張期: ${ocrResult.dia} mmHg\n脈拍: ${ocrResult.pul} /min\n信頼度: ${Math.round(ocrResult.confidence * 100)}%\n\nデータを保存しました。`;
+      
+      Alert.alert("認識成功", message, [{ text: "OK", onPress: () => router.back() }]);
     } catch (error) {
       console.error("Failed to pick image:", error);
       Alert.alert("エラー", "画像の選択に失敗しました。");

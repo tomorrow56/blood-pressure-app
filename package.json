@@ -21,6 +21,7 @@
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",
+    "@google-cloud/vision": "^5.3.4",
     "@react-native-async-storage/async-storage": "^2.1.2",
     "@react-navigation/bottom-tabs": "^7.4.0",
     "@react-navigation/elements": "^2.6.3",
@@ -66,6 +67,7 @@
     "react-native-svg": "15.12.1",
     "react-native-web": "~0.21.0",
     "react-native-worklets": "0.5.1",
+    "sharp": "^0.34.5",
     "superjson": "^1.13.3",
     "tesseract.js": "^7.0.0",
     "zod": "^4.1.12"
