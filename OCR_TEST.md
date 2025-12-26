@@ -23,7 +23,50 @@
 curl http://localhost:3000/api/trpc/ocr.checkConfiguration
 ```
 
-## 🖼️ テスト画像の準備
+## � テスト実行までの完全ステップ
+
+### ステップ1: 環境準備
+```bash
+# 1. プロジェクトディレクトリに移動
+cd blood-pressure-app
+
+# 2. 依存関係をインストール（未実行の場合）
+pnpm install
+
+# 3. テスト画像ディレクトリを作成
+mkdir -p test-images
+
+# 4. 血圧計画像を test-images/ に配置
+# test1.jpg, test2.jpg などの名前で配置
+```
+
+### ステップ2: サーバー起動
+```bash
+# バックエンドサーバーを起動（ターミナル1）
+pnpm dev:server
+```
+**起動確認**: `Server running on http://localhost:3000` と表示される
+
+### ステップ3: 設定確認
+```bash
+# 別のターミナルでAPI設定を確認（ターミナル2）
+curl http://localhost:3000/api/trpc/ocr.checkConfiguration
+```
+**期待される結果**:
+```json
+{"result":{"data":{"json":{"configured":true,"message":"Google Vision API is configured"}}}}
+```
+
+### ステップ4: テスト実行
+```bash
+# バックエンドOCRテストを実行（ターミナル2）
+npx tsx scripts/test-backend-ocr.ts
+```
+
+### ステップ5: 結果確認
+テスト結果が出力され、OCR認識の精度を確認できます。
+
+## �🖼️ テスト画像の準備
 
 ### 1. テスト画像ディレクトリ作成
 ```bash
