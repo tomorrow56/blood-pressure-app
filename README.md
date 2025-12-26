@@ -135,9 +135,34 @@ pnpm install
 
 3. **環境変数を設定**
 ```bash
-# .env.localファイルを作成し、必要な環境変数を設定
+# .env.localファイルを作成
 touch .env.local
-# 以下の環境変数を設定: DATABASE_URL, JWT_SECRET, OAUTH_SERVER_URL など
+
+# 環境変数を設定（.env.localに追記）
+cat > .env.local << EOF
+# Google Cloud Vision API
+GOOGLE_APPLICATION_CREDENTIALS=./google-key.json
+
+# API設定
+API_URL=http://localhost:3000
+EXPO_PORT=8081
+
+# データベース（MySQLはオプション・基本機能では不要）
+# DATABASE_URL=mysql://username:password@localhost:3306/blood_pressure_db
+# ※血圧データはAsyncStorage（ローカル）に保存されるため、開発中は設定不要
+
+# 認証（JWTシークレット）
+JWT_SECRET=your-super-secret-jwt-key-here
+
+# OAuthサーバー設定
+OAUTH_SERVER_URL=http://localhost:3000
+OAUTH_PORTAL_URL=http://localhost:3000
+
+# アプリ設定
+EXPO_PUBLIC_APP_ID=blood-pressure-app
+EXPO_PUBLIC_OWNER_OPEN_ID=your-owner-id
+EXPO_PUBLIC_OWNER_NAME=Your Name
+EOF
 ```
 
 4. **Google Cloud Vision APIの設定**
