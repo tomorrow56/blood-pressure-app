@@ -89,7 +89,15 @@ blood-pressure-app/
 ├── utils/               # ユーティリティ関数
 ├── types/               # TypeScript型定義
 ├── constants/           # 定数ファイル
-└── drizzle/            # データベース関連
+├── drizzle/            # データベース関連
+├── assets/             # 静的アセット（画像、アイコン）
+├── hooks/              # Reactカスタムフック
+├── lib/                # ライブラリファイル
+├── scripts/            # ビルドスクリプト
+├── shared/             # 共有コード
+├── app.config.ts       # Expoアプリ設定
+├── tsconfig.json       # TypeScript設定
+└── package.json        # パッケージ情報
 ```
 
 ## 🎨 デザインシステム
