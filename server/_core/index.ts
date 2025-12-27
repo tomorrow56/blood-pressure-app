@@ -1,15 +1,16 @@
 import "dotenv/config";
 import express from "express";
 import { createServer } from "http";
-import net from "net";
+import { Server as NetServer } from "net";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { registerOAuthRoutes } from "./oauth";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
+import { Request, Response, NextFunction } from "express";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise((resolve) => {
-    const server = net.createServer();
+    const server = new NetServer();
     server.listen(port, () => {
       server.close(() => resolve(true));
     });
@@ -26,12 +27,11 @@ async function findAvailablePort(startPort: number = 3000): Promise<number> {
   throw new Error(`No available port found starting from ${startPort}`);
 }
 
-async function startServer() {
+export function createExpressApp() {
   const app = express();
-  const server = createServer(app);
 
   // Enable CORS for all routes - reflect the request origin to support credentials
-  app.use((req, res, next) => {
+  app.use((req: Request, res: Response, next: NextFunction) => {
     const origin = req.headers.origin;
     if (origin) {
       res.header("Access-Control-Allow-Origin", origin);
@@ -56,7 +56,7 @@ async function startServer() {
 
   registerOAuthRoutes(app);
 
-  app.get("/api/health", (_req, res) => {
+  app.get("/api/health", (_req: Request, res: Response) => {
     res.json({ ok: true, timestamp: Date.now() });
   });
 
@@ -67,6 +67,13 @@ async function startServer() {
       createContext,
     }),
   );
+
+  return app;
+}
+
+async function startServer() {
+  const app = createExpressApp();
+  const server = createServer(app);
 
   const preferredPort = parseInt(process.env.PORT || "3000");
   const port = await findAvailablePort(preferredPort);

@@ -125,7 +125,7 @@ export async function checkOCRConfiguration(): Promise<{
     }
     
     const data = await configResponse.json();
-    const result = superjson.deserialize(data.result.data.json) as {
+    const result = data.result.data.json as {
       configured: boolean;
       message: string;
     };
