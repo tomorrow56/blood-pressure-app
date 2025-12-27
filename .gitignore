@@ -68,3 +68,6 @@ Thumbs.db
 # Windsurf
 .windsurf/
 .windsurfuser/
+
+# Test images
+test-images/
