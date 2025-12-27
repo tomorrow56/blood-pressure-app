@@ -7,8 +7,8 @@ async function testBackendOCR() {
   console.log("=== Backend OCR Test ===\n");
 
   const testImages = [
-    "/home/ubuntu/blood_pressure_app/test-images/test1.jpg",
-    "/home/ubuntu/blood_pressure_app/test-images/test2.jpg",
+    "./test-images/test1.jpg",
+    "./test-images/test2.jpg",
   ];
 
   for (const imagePath of testImages) {
@@ -20,10 +20,9 @@ async function testBackendOCR() {
     }
 
     try {
-      // 画像をBase64エンコード
+      // 画像をBase64エンコード（Node.jsファイルシステム使用）
       const imageBuffer = fs.readFileSync(imagePath);
-      const base64Image = imageBuffer.toString("base64");
-      const imageUri = `data:image/jpeg;base64,${base64Image}`;
+      const base64Image = imageBuffer.toString('base64');
 
       // tRPC経由でOCRエンドポイントを呼び出し
       const response = await fetch(API_URL, {
@@ -32,8 +31,8 @@ async function testBackendOCR() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          input: {
-            imageUri,
+          json: {
+            imageBase64: base64Image,
           },
         }),
       });
@@ -48,12 +47,14 @@ async function testBackendOCR() {
       const result = await response.json();
       console.log(`  Result:`, result);
 
-      if (result.result?.data) {
-        const data = result.result.data;
+      if (result.result?.data?.json) {
+        const data = result.result.data.json;
         console.log(`  ✅ SYS: ${data.sys}, DIA: ${data.dia}, PUL: ${data.pul}`);
-        console.log(`  Confidence: ${Math.round(data.confidence * 100)}%`);
+        console.log(`  Confidence: ${Math.round((data.confidence || 0) * 100)}%`);
+        console.log(`  Full text: "${data.fullText}"`);
       } else {
         console.log(`  ❌ No data in response`);
+        console.log(`  Response structure:`, JSON.stringify(result, null, 2));
       }
     } catch (error) {
       console.log(`  ❌ Error:`, error);

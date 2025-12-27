@@ -40,8 +40,12 @@ export async function recognizeBloodPressureImage(imageUri: string): Promise<OCR
 
     console.log('[OCR] Image converted to base64, calling backend...');
 
+    // API URLをログ出力
+    const apiUrl = `${getApiBaseUrl()}/api/trpc/ocr.recognizeBloodPressure`;
+    console.log('[OCR] API URL:', apiUrl);
+
     // バックエンドのOCRエンドポイントを呼び出す
-    const apiResponse = await fetch(`${getApiBaseUrl()}/api/trpc/ocr.recognizeBloodPressure`, {
+    const apiResponse = await fetch(apiUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -52,12 +56,27 @@ export async function recognizeBloodPressureImage(imageUri: string): Promise<OCR
       }),
     });
 
+    console.log('[OCR] Response status:', apiResponse.status);
+    console.log('[OCR] Response ok:', apiResponse.ok);
+
     if (!apiResponse.ok) {
-      throw new Error(`HTTP error! status: ${apiResponse.status}`);
+      const errorText = await apiResponse.text();
+      console.log('[OCR] Error response:', errorText);
+      throw new Error(`HTTP error! status: ${apiResponse.status}, details: ${errorText}`);
     }
     
     const data = await apiResponse.json();
-    const result = superjson.deserialize(data.result.data.json) as {
+    console.log('[OCR] Raw response data:', data);
+
+    if (!data || !data.result || !data.result.data) {
+      console.log('[OCR] Invalid response structure:', data);
+      throw new Error('Invalid response structure from backend');
+    }
+
+    console.log('[OCR] Response data.json:', data.result.data.json);
+
+    // superjson を使わずに直接解析
+    const result = data.result.data.json as {
       success: boolean;
       fullText: string;
       sys: number | null;
