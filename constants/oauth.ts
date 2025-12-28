@@ -37,11 +37,16 @@ export function getApiBaseUrl(): string {
 
   // On web, derive from current hostname by replacing port 8081 with 3000
   if (ReactNative.Platform.OS === "web" && typeof window !== "undefined" && window.location) {
-    const { protocol, hostname } = window.location;
+    const { protocol, hostname, port } = window.location;
     // Pattern: 8081-sandboxid.region.domain -> 3000-sandboxid.region.domain
     const apiHostname = hostname.replace(/^8081-/, "3000-");
     if (apiHostname !== hostname) {
       return `${protocol}//${apiHostname}`;
+    }
+
+    // Local dev: Metro is typically 8081, API server is typically 3000
+    if (hostname === "localhost" && port === "8081") {
+      return `${protocol}//${hostname}:3000`;
     }
   }
 
